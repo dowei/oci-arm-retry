@@ -11,9 +11,10 @@ import datetime
 # ╚══════════════════════════════════════════════════════╝
 
 # ─── Configuration ───────────────────────────────────────
-COMPARTMENT_ID = (
-    "ocid1.user.oc1..aaaaaaaapx4da3gsan53iqxodalvf36azfm4gy2f3c4d3ztvrpytkbejq7ga"  # Replace with your tenancy OCID
-)
+# Compartment to create the instance in. Leave empty to use the tenancy (root) compartment
+# from your OCI config / the OCI_TENANCY secret; a compartment OCID also works here.
+# NOTE: a *user* OCID (ocid1.user...) does NOT work - it fails with 404 NotAuthorizedOrNotFound.
+COMPARTMENT_ID = ""  # ocid1.compartment.oc1..xxxxxx (optional)
 # OCID of an existing subnet to launch into (this script creates no network resources).
 # OCI Console -> Networking -> Virtual Cloud Networks -> <your VCN> -> Subnets -> Copy OCID
 SUBNET_ID = "ocid1.subnet.oc1.ap-tokyo-1.aaaaaaaaahgcfvji5tvhtyve3jrkxuazkq5ngmbtef5w5ev5p3ytjgmyiokq"
@@ -33,6 +34,14 @@ RETRY_INTERVAL = 90  # seconds
 #   The workflow auto-creates it from GitHub Secrets — see README.md
 # ────────────────────────────────────────────────────────
 config = oci.config.from_file()
+
+if not COMPARTMENT_ID:
+    COMPARTMENT_ID = config["tenancy"]
+if not COMPARTMENT_ID.startswith(("ocid1.tenancy.", "ocid1.compartment.")):
+    raise SystemExit(
+        "COMPARTMENT_ID must be a tenancy (ocid1.tenancy...) or compartment (ocid1.compartment...) "
+        f"OCID, got: {COMPARTMENT_ID}"
+    )
 
 
 def get_availability_domain():
@@ -85,6 +94,14 @@ def try_create_instance(subnet_id, ad_name, image_id):
 def main():
     print(f"Using existing subnet: {SUBNET_ID}")
     subnet_id = SUBNET_ID
+
+    # A subnet OCID carries its region: ocid1.subnet.oc1.<region>.<unique>
+    subnet_region = SUBNET_ID.split(".")[3] if SUBNET_ID.count(".") >= 4 else None
+    if subnet_region and subnet_region != config["region"]:
+        print(
+            f"⚠️  OCI config region is '{config['region']}' but the subnet is in "
+            f"'{subnet_region}' - the launch will not find it"
+        )
 
     print("Fetching availability domain...")
     ad_name = get_availability_domain()
