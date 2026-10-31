@@ -14,6 +14,9 @@ import datetime
 COMPARTMENT_ID = (
     "ocid1.user.oc1..aaaaaaaahiziylbcz24rsek6xbvqfv4dbbbbacfgpahaw36alo5c2ncv3j3q"  # Replace with your tenancy OCID
 )
+# OCID of an existing subnet to launch into (this script creates no network resources).
+# OCI Console -> Networking -> Virtual Cloud Networks -> <your VCN> -> Subnets -> Copy OCID
+SUBNET_ID = "ocid1.subnet.oc1.ap-tokyo-1.aaaaaaaaahgcfvji5tvhtyve3jrkxuazkq5ngmbtef5w5ev5p3ytjgmyiokq"
 SSH_PUBLIC_KEY = "ssh-rsa AAAAB3NzaC1yc2EAAAABJQAAAQEAkvfwKeEOP1T+7gVehfqKpaMUkuUY3gX3yK6HrJL1X2XQcV5A1pbRXKbQVQquKiYDVdmBhq7UyoIiDEGqa7oeeh6erz1/UlQ1ukt9p4KxoEzG6dx6cVcGEXgIF3QuoHqm98t/5Tb2tKHEER8L5op/7YvdUC0SvTpOoBFoC0JY/LG43G6iIIhN3s4EEK3vKmfP6/DW+C0AweU5WSl+4GEILgIjQfCyGMC2q/gXdLdmIOvc1aHfdTthnMf5r80FEOfKmAND8V6S0DhgSUUbOZ6XhlMVVYAa+idej55co+9nlh1gcEnCVOxxdlS9nPMo8MSq7Yy/KIh3RZhA6x8FOZ2dHQ== rsa-key-20200410"  # Replace with your SSH public key (.pub file content)
 INSTANCE_NAME = "streamlit-server"
 ARM_OCPUS = 2
@@ -53,94 +56,6 @@ def get_ubuntu_arm_image():
     return images[0].id
 
 
-def create_vcn_and_subnet():
-    network = oci.core.VirtualNetworkClient(config)
-
-    # Check if VCN already exists
-    vcns = network.list_vcns(COMPARTMENT_ID, display_name="retry-vcn").data
-    if vcns:
-        vcn = vcns[0]
-        print(f"Using existing VCN: {vcn.id}")
-    else:
-        vcn = network.create_vcn(
-            oci.core.models.CreateVcnDetails(
-                compartment_id=COMPARTMENT_ID,
-                display_name="retry-vcn",
-                cidr_block="10.0.0.0/16",
-            )
-        ).data
-        print(f"Created VCN: {vcn.id}")
-
-        # Create Internet Gateway
-        ig = network.create_internet_gateway(
-            oci.core.models.CreateInternetGatewayDetails(
-                compartment_id=COMPARTMENT_ID,
-                vcn_id=vcn.id,
-                display_name="retry-ig",
-                is_enabled=True,
-            )
-        ).data
-
-        # Update route table to allow outbound traffic
-        network.update_route_table(
-            vcn.default_route_table_id,
-            oci.core.models.UpdateRouteTableDetails(
-                route_rules=[
-                    oci.core.models.RouteRule(
-                        destination="0.0.0.0/0",
-                        network_entity_id=ig.id,
-                    )
-                ]
-            ),
-        )
-
-        # Open inbound ports: SSH / HTTP / HTTPS / Streamlit
-        security_lists = network.list_security_lists(COMPARTMENT_ID, vcn_id=vcn.id).data
-        if security_lists:
-            existing_egress = security_lists[0].egress_security_rules
-            new_ingress = []
-            for port in [22, 80, 443, 8501]:
-                new_ingress.append(
-                    oci.core.models.IngressSecurityRule(
-                        protocol="6",
-                        source="0.0.0.0/0",
-                        tcp_options=oci.core.models.TcpOptions(
-                            destination_port_range=oci.core.models.PortRange(
-                                min=port, max=port
-                            )
-                        ),
-                    )
-                )
-            network.update_security_list(
-                security_lists[0].id,
-                oci.core.models.UpdateSecurityListDetails(
-                    ingress_security_rules=new_ingress,
-                    egress_security_rules=existing_egress,
-                ),
-            )
-
-    # Check if subnet already exists
-    subnets = network.list_subnets(
-        COMPARTMENT_ID, vcn_id=vcn.id, display_name="retry-subnet"
-    ).data
-    if subnets:
-        subnet = subnets[0]
-        print(f"Using existing subnet: {subnet.id}")
-    else:
-        subnet = network.create_subnet(
-            oci.core.models.CreateSubnetDetails(
-                compartment_id=COMPARTMENT_ID,
-                vcn_id=vcn.id,
-                display_name="retry-subnet",
-                cidr_block="10.0.0.0/24",
-                prohibit_public_ip_on_vnic=False,
-            )
-        ).data
-        print(f"Created subnet: {subnet.id}")
-
-    return subnet.id
-
-
 def try_create_instance(subnet_id, ad_name, image_id):
     compute = oci.core.ComputeClient(config)
     instance = compute.launch_instance(
@@ -168,8 +83,8 @@ def try_create_instance(subnet_id, ad_name, image_id):
 
 
 def main():
-    print("Initializing network configuration...")
-    subnet_id = create_vcn_and_subnet()
+    print(f"Using existing subnet: {SUBNET_ID}")
+    subnet_id = SUBNET_ID
 
     print("Fetching availability domain...")
     ad_name = get_availability_domain()
