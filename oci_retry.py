@@ -12,7 +12,7 @@ import datetime
 
 # ─── Configuration ───────────────────────────────────────
 COMPARTMENT_ID = (
-    "ocid1.user.oc1..aaaaaaaahiziylbcz24rsek6xbvqfv4dbbbbacfgpahaw36alo5c2ncv3j3q"  # Replace with your tenancy OCID
+    "ocid1.user.oc1..aaaaaaaapx4da3gsan53iqxodalvf36azfm4gy2f3c4d3ztvrpytkbejq7ga"  # Replace with your tenancy OCID
 )
 # OCID of an existing subnet to launch into (this script creates no network resources).
 # OCI Console -> Networking -> Virtual Cloud Networks -> <your VCN> -> Subnets -> Copy OCID
